@@ -219,12 +219,16 @@ static uint32_t bswap_32_pu8(uint8_t *pu8)
 }
 
 extern mfcuk_finger_tmpl_entry mfcuk_finger_db[];
+
 extern int mfcuk_finger_db_entries;
+
+uint8_t hicnt[1 << 24], locnt[1 << 24];
 
 // TODO: rename the array and number of items in array variable names
 tag_nonce_entry_t arrSpoofEntries[MAX_TAG_NONCES]; // "Cache" array of already received tag nonces, since we cannot 100% fix one tag nonce as of now
 uint32_t numSpoofEntries = 0; // Actual number of entries in the arrSpoofEntries
 uint32_t numAuthAttempts = 0; // Number of authentication attempts for Recovery of keys - used to statistics. TODO: implement proper statistics with timings, number of tries, etc.
+uint32_t numHit4 = 0; // Number of 4-bit responses
 bool bfOpts[256] = {false}; // Command line options, indicates their presence, initialize with false
 uint8_t verboseLevel = 0; // No verbose level by default
 
@@ -615,6 +619,7 @@ static uint32_t mfcuk_key_recovery_block(nfc_device *pnd, uint32_t uiUID, uint64
 
   // zveriu - Successful: either authentication (szRx == 32) either encrypted 0x5 reponse (szRx == 4)
   if (res == 4) {
+    ++numHit4;
     //printf("INFO - 4-bit (szRx=%d) error code 0x5 encrypted (abtRx=0x%02x)\n", szRx, abtRx[0] & 0xf);
 
     if (ptrFoundTagNonceEntry->current_out_of_8 < 0) {
@@ -645,6 +650,30 @@ static uint32_t mfcuk_key_recovery_block(nfc_device *pnd, uint32_t uiUID, uint64
         }
 
         states_list = lfsr_common_prefix(ptrFoundTagNonceEntry->spoofNrPfx, ptrFoundTagNonceEntry->spoofArEnc, ptrFoundTagNonceEntry->ks, ptrFoundTagNonceEntry->parBitsArr);
+	
+	for (i = 0; (states_list) && ((states_list + i)->odd != 0 || (states_list + i)->even != 0) && (i < MAX_COMMON_PREFIX_STATES); i++) {
+          current_state = states_list + i;
+          lfsr_rollback_word(current_state, uiUID ^ ptrFoundTagNonceEntry->tagNonce, 0);
+          crypto1_get_lfsr(current_state, &key_recovered);
+          ++hicnt[(key_recovered >> 24) & 0xffffff];
+          ++locnt[key_recovered & 0xffffff];
+        }
+        printf("%d candidates found, nonce %08x\n", i, ptrFoundTagNonceEntry->tagNonce);
+        int maxhi = 0;
+        int maxlo = 0;
+        int maxhii = 0;
+        int maxloi = 0;
+        for (i = 0; i < (1 << 24); ++i) {
+          if (hicnt[i] > maxhi){
+            maxhi = hicnt[i];
+            maxhii = i;
+          }
+          if (locnt[i] > maxlo){
+            maxlo = locnt[i];
+            maxloi = i;
+          }
+        }
+        printf("maxhi=%d maxhii=%08x maxlo=%d maxloi=%08x\n", maxhi, maxhii, maxlo, maxloi);
 
         for (i = 0; (states_list) && ((states_list + i)->odd != 0 || (states_list + i)->even != 0) && (i < MAX_COMMON_PREFIX_STATES); i++) {
           current_state = states_list + i;
@@ -655,7 +684,7 @@ static uint32_t mfcuk_key_recovery_block(nfc_device *pnd, uint32_t uiUID, uint64
             printf("\nINFO: block %d recovered KEY: %012"PRIx64"\n", uiBlock, key_recovered);
           }
 
-          flag_key_recovered = 1;
+          //flag_key_recovered = 1;
 
           *ui64KeyRecovered = key_recovered;
         }
@@ -1598,7 +1627,10 @@ int main(int argc, char *argv[])
   }
 
   // RECOVER KEYS CODE-BLOCK
-  printf("\nRECOVER: ");
+  
+printf("\nRECOVER: ");
+  for (i = 0; i < (1 << 24); ++i)
+	hicnt[i] = locnt[i] = 0;
   for (i = 0; i < max_sectors; i++) {
     uint64_t crntRecovKey = 0;
     ui64KeyRecovered = 0;
@@ -1658,6 +1690,7 @@ int main(int argc, char *argv[])
             printf("    key: %012"PRIx64"\n", crntRecovKey);
             printf("  block: %02x\n", block);
             printf("diff Nt: %d\n", numSpoofEntries);
+	    printf(" hit4: %d\n", numHit4);
             printf("  auths: %d\n", numAuthAttempts);
             printf("-----------------------------------------------------\n");
           }

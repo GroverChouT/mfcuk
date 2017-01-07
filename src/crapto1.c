@@ -438,11 +438,11 @@ check_pfx_parity(uint32_t prefix, uint32_t rresp, uint8_t parities[8][8],
     nr = ks1 ^(prefix | c << 5);
     rr = ks2 ^ rresp;
 
-    good &= parity(nr & 0x000000ff) ^ parities[c][3] ^ BIT(ks2, 24);
-    good &= parity(rr & 0xff000000) ^ parities[c][4] ^ BIT(ks2, 16);
-    good &= parity(rr & 0x00ff0000) ^ parities[c][5] ^ BIT(ks2,  8);
-    good &= parity(rr & 0x0000ff00) ^ parities[c][6] ^ BIT(ks2,  0);
-    good &= parity(rr & 0x000000ff) ^ parities[c][7] ^ ks3;
+    //good &= parity(nr & 0x000000ff) ^ parities[c][3] ^ BIT(ks2, 24);
+    //good &= parity(rr & 0xff000000) ^ parities[c][4] ^ BIT(ks2, 16);
+    //good &= parity(rr & 0x00ff0000) ^ parities[c][5] ^ BIT(ks2,  8);
+    //good &= parity(rr & 0x0000ff00) ^ parities[c][6] ^ BIT(ks2,  0);
+    //good &= parity(rr & 0x000000ff) ^ parities[c][7] ^ ks3;
   }
 
   return sl + good;
